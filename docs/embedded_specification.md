@@ -1,16 +1,17 @@
 # EMBEDDED SPECIFICATION
-## Akvaryum Otomatik Yemleme Sistemi
+## Tolun — Akıllı Ev & Akvaryum Otomasyon Platformu
 
 > **Durum:** 🧪 Test Aşaması  
 > **Donanım:** ESP32-S3  
 > **Framework:** ESP-IDF v6.0 (FreeRTOS)  
 > **İletişim:** BLE (NimBLE GATT Server)  
-> **Motor:** Servo (PWM/LEDC)
+> **Motor:** Servo (PWM/LEDC)  
+> **Desteklenen Ürünler:** AquaFeeder, AquaLighting, WallLighting, HomeLighting
 
 ---
 
 ## 1. Amaç
-Bu doküman, ESP32 tabanlı gömülü sistemin yazılım mimarisi, task yapısı ve donanım entegrasyonunu tanımlar.
+Bu doküman, Tolun platformu cihazlarının (yemleme ve aydınlatma) ESP32 tabanlı gömülü yazılım mimarisini, task yapısını ve donanım entegrasyonunu tanımlar.
 
 ---
 
@@ -103,7 +104,7 @@ Sistem FreeRTOS tabanlıdır.
 - **GPIO:** 4 (konfigüre edilebilir)
 - **PWM:** 50 Hz, 14-bit çözünürlük (LEDC)
 - **Mantık:** Aç (açma) → bekle (porsiyon × 1 sn) → kapat
-- **Güvenlik:** 15 sn maksimum çalışma süresi, emergency stop
+- **Güvenlik:** 20 sn maksimum çalışma süresi, emergency stop
 - **Feedback:** RUNNING/IDLE durum değişimine otomatik notify gönderimi
 
 ---
@@ -120,7 +121,7 @@ Sistem FreeRTOS tabanlıdır.
 
 | Veri | Boyut | Notlar |
 |------|---|---|
-| Zamanlanmış planlar | ~256 byte | Maksimum 8 plan (hour/min/portion/interval) |
+| Zamanlanmış planlar | ~185 byte | Maksimum 5 plan (hour/min/portion/interval) |
 | Sistem saati | 8 byte | UNIX timestamp (dakika başında persist edilir) |
 | Zaman dilimi | 4 byte | UTC farkı dakika cinsinden (NVS key: `tz_offset`) |
 | Son durum | 4 byte | IDLE/RUNNING/ERROR |

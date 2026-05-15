@@ -1,0 +1,14 @@
+# Sub-repolar — kendi git repoları, ayrı yönetilir
+Firmware/
+Mobile App/
+
+# Kişisel Claude Code config'i (lokal)
+.claude/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/

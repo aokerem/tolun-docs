@@ -1,4 +1,4 @@
-# AquaControl UI/UX Değerlendirme Raporu
+# TolunControl UI/UX Değerlendirme Raporu
 
 **Tarih:** 2026-04-25
 **Sürüm:** v1.7.1

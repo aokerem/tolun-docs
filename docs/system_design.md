@@ -1,24 +1,32 @@
-# AKVARYUM OTOMATİK YEMLEME SİSTEMİ
+# TOLUN — AKILLI EV & AKVARYUM OTOMASYON PLATFORMU
 ## Temel Sistem Tasarımı
 
 > **Durum:** 🧪 Test Aşaması (BLE + Servo Motor — v1.0+)  
-> **Son Güncelleme:** 2026-04-25
+> **Son Güncelleme:** 2026-05-13
 
 ---
 
 ## 1. Amaç
-Bu sistemin amacı, akvaryum balıklarının belirlenen zamanlarda veya kullanıcı komutu ile kontrollü şekilde otomatik yemlenmesini sağlamaktır. Sistem hem lokal (Bluetooth) hem de uzaktan (Wi-Fi) erişilebilir olacaktır.
+Tolun platformunun amacı; akvaryum yemleme, akvaryum aydınlatma ve ev aydınlatma sistemlerinin tek bir mobil uygulama (TolunControl) ve ortak BLE protokolü üzerinden yönetilmesini sağlamaktır. Sistem hem lokal (Bluetooth) hem de uzaktan (Wi-Fi) erişilebilir olacaktır.
 
 ---
 
 ## 2. Sistem Kapsamı
 
+### Desteklenen Ürün Aileleri:
+- **AquaFeeder** — Otomatik akvaryum balık yemleyici
+- **AquaLighting** — Akvaryum aydınlatma kontrolü
+- **WallLighting** — Duvar aydınlatma kontrolü
+- **HomeLighting** — Ev genel aydınlatma kontrolü
+
 ### Desteklenen Özellikler:
 - Manuel yemleme (mobil uygulama üzerinden)
 - Otomatik yemleme (zamanlanmış)
+- Aydınlatma açma/kapama ve parlaklık/renk kontrolü
+- Aydınlatma zamanlama planları
 - Bluetooth ile lokal bağlantı
-- Wi-Fi ile uzaktan kontrol
-- Yemleme sonrası geri bildirim
+- Wi-Fi ile uzaktan kontrol (planlanmış)
+- İşlem sonrası geri bildirim ve log kaydı
 
 ---
 
@@ -125,7 +133,7 @@ Bu sistemin amacı, akvaryum balıklarının belirlenen zamanlarda veya kullanı
 - Aşırı yemleme koruması
 - Minimum yemleme aralığı: **60 saniye** (art arda yemleme engeli)
 - Günlük maksimum porsiyon limiti: **30 porsiyon**
-- Motor maksimum çalışma süresi: **15 saniye** (timeout + emergency stop)
+- Motor maksimum çalışma süresi: **20 saniye** (timeout + emergency stop)
 - Hata durumunda sistem durdurma
 
 ---

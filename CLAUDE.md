@@ -6,11 +6,36 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Tolun** is a smart aquarium automatic fish feeder system — an ESP32-S3 firmware paired with a React Native mobile app that communicate over BLE.
+**Tolun** is a smart home & aquarium automation platform — an ESP32-S3 firmware paired with a React Native mobile app that communicate over BLE. The platform covers three use cases:
+
+- **Aquarium feeding** — automated fish feeder with scheduling and portion control
+- **Aquarium lighting** — automatic aquarium light control with scheduling and color/brightness management
+- **Home lighting** — integration with whole-home lighting systems (wall lights, ambient lighting)
+
+All device types share the same BLE protocol and mobile app; firmware behavior varies by device type.
 
 - **`Firmware/`** — ESP-IDF v6.0 (FreeRTOS) C firmware for ESP32-S3
-- **`Mobile App/`** — React Native + Expo (TypeScript) mobile application
+- **`Mobile App/`** — **TolunControl** — React Native + Expo (TypeScript) mobile application
 - **`docs/`** — System-wide specifications shared by both sides
+
+### Repository Structure
+
+Firmware and mobile app are maintained in **separate git repositories**:
+
+- `Firmware/` → its own git repo
+- `Mobile App/` → its own git repo
+
+This root directory (`tolun/`) is a monorepo-style workspace with **three independent git repositories**:
+
+| Path | Repo | Tracks |
+|---|---|---|
+| `tolun/` (root) | [`tolun-docs`](https://github.com/aokerem/tolun-docs) | `docs/`, `3d/`, `CLAUDE.md`, `VERSIONING.md` — paylaşılan spec'ler ve dokümantasyon |
+| `tolun/Firmware/` | [`aquarium-firmware`](https://github.com/aokerem/aquarium-firmware) | ESP32-S3 firmware (ESP-IDF v6.0) |
+| `tolun/Mobile App/` | [`aquarium-mobile`](https://github.com/aokerem/aquarium-mobile) | TolunControl React Native app |
+
+`Firmware/` ve `Mobile App/` root repo'nun `.gitignore`'unda olduğundan tolun-docs onları "alt klasör" olarak görmez. Her commit, branch ve tag ilgili repo'da bağımsız yönetilir.
+
+> **IMPORTANT:** Git komutu çalıştırmadan önce hangi repo'da olduğundan emin ol. Doküman/spec değişiklikleri tolun root'ta, firmware değişiklikleri `Firmware/`'de, mobil değişiklikleri `Mobile App/`'te commit edilir. Protokol değişikliği gibi her iki tarafı etkileyen iş için **üç ayrı commit** gerekir (firmware + mobile + spec).
 
 ---
 
@@ -65,7 +90,7 @@ Scheduler  → cmd_queue   (auto-feed triggers)
 - `core/state_manager.c` — mutex-protected state machine (`IDLE → RUNNING → IDLE`, any → `ERROR`)
 - `core/command_handler.c` — validates BLE commands from `cmd_queue`, enforces state and safety rules
 - `core/feed_log.c` — ring buffer (max 20 entries) persisted to NVS
-- `scheduler/scheduler.c` — checks schedules every 60 s; up to 8 stored in NVS
+- `scheduler/scheduler.c` — checks schedules every 60 s; up to 5 stored in NVS
 - `comm/ble_service.c` — NimBLE GATT server; device advertises as `AquaFeeder-XXXX`
 
 **NVS namespace:** `"tolun"` (key names in `system_config.h`)
@@ -74,21 +99,31 @@ Scheduler  → cmd_queue   (auto-feed triggers)
 - Portion: 1–10 per command
 - Min interval between feedings: 60 s
 - Daily portion limit: 30
-- Motor max run time: 15 s (hardware watchdog)
+- Motor max run time: 20 s (hardware watchdog)
 - Watchdog timeout: 30 s
 
 ### GATT Services
 
 Two custom services + two standard services:
 
-| Service | UUID prefix | Purpose |
-|---|---|---|
-| Feeding Service | `6E400000-…` | Main command/response/event/status |
-| Device Time Service | `6E300000-…` | `set_time` command only |
-| Device Information Service | `0x180A` | FW/HW version, model |
-| Elapsed Time Service | `0x183F` | Uptime |
+| Service | Service UUID | Characteristic | Char UUID | Properties |
+|---|---|---|---|---|
+| **Feeding Service** | `6E400000-B5A3-F393-E0A9-E50E24DCCA9E` | Command | `6E400001-…` | Write |
+| | | Response | `6E400002-…` | Notify |
+| | | Event | `6E400003-…` | Notify |
+| | | Status | `6E400004-…` | Read + Notify |
+| | | Feed Log | `6E400005-…` | Read |
+| | | Lighting Log | `6E400006-…` | Read |
+| **Device Time Service** | `0x1847` (standard) | Time Command | `6E300001-…` | Write |
+| | | Time Response | `6E300002-…` | Notify |
+| **Device Information Service** | `0x180A` (standard) | FW Revision | `0x2A26` | Read |
+| | | HW Revision | `0x2A27` | Read |
+| | | Model Number | `0x2A24` | Read |
+| **Elapsed Time Service** | `0x183F` (standard) | Elapsed Time | `0x2BF2` | Read + Notify |
 
-`set_time` must go to the **Device Time Service** (`6E300001` write, `6E300002` notify), not the Feeding Service. Send once per connection.
+All `6E4xxxxx` and `6E3xxxxx` UUIDs share the suffix `-B5A3-F393-E0A9-E50E24DCCA9E`.
+
+`set_time` must go to the **Device Time Service** (service `0x1847`; write char `6E300001-…`, notify char `6E300002-…`), not the Feeding Service. Send once per connection.
 
 ---
 
@@ -130,40 +165,60 @@ ThemeProvider → AppStateProvider → BleProvider → app screens
 
 **BLE layer** (`src/core/ble/`):
 - `BleService.ts` — singleton; wraps `react-native-ble-plx`; handles scan, connect, MTU negotiation, command send with timeout/retry, notify subscriptions
-- `BleContext.tsx` — React context over `BleService`; exposes `sendCommand`, connection state, `deviceState`, `deviceInfo` (includes `schedules` and `feedLog` synced on connect)
+- `BleContext.tsx` — React context over `BleService`; exposes `sendCommand`, connection state, `deviceState`, `deviceInfo` (includes `schedule_count`; schedules fetched individually via `get_schedule` by index; feed/lighting logs fetched via `get_feed_log` / `get_lighting_log`)
 - `BleConstants.ts` — all GATT UUIDs; supported device name prefixes (`AquaFeeder-`, `AquaLighting-`, `WallLighting-`, `HomeLighting-`)
 
 **App state** (`src/data/AppStateContext.tsx`):
 - Persists `devices`, `plans`, and `feedLogs` to `AsyncStorage` (keys prefixed `@tolun:`)
 - `syncDeviceLogs` deduplicates by timestamp (±10 s window)
 
-**On connect**, `app/_layout.tsx` runs two headless sync components:
-- `DevicePlanSync` — overwrites local plans for the connected device with schedules from `deviceInfo`
-- `FeedLogSync` — merges device feed log into local history
+**On connect**, `app/_layout.tsx` runs sequential per-index commands then syncs:
+1. `get_status` → returns device state + `schedule_count` + `feed_log_count` + `lighting_log_count`
+2. `get_schedule` (repeated per index, 0…schedule_count-1) → fetches each plan individually
+3. `get_feed_log_entry` (repeated per index, 0…feed_log_count-1) → fetches each feed log entry
+4. `get_lighting_log_entry` (repeated per index, 0…lighting_log_count-1) → fetches each lighting log entry
+
+Headless sync components: `DevicePlanSync` (overwrites local plans with fetched schedules), `FeedLogSync` (merges feed/lighting logs).
 
 **Routing** (`app/(tabs)/`): `index` (Home), `plans`, `devices`, `settings` — device-type-specific screens are in `src/devices/Feeder/` and `src/devices/Lighting/`.
 
 ### BLE Command Protocol
 
-All commands are JSON over the Feeding Service command characteristic. Response comes back on the response characteristic (notify). Timeout: 3 s, max 2 retries.
+All commands are JSON over the Feeding Service command characteristic (`6E400001-…`). Responses come back on the response characteristic (`6E400002-…`). Timeout: 3 s, max 2 retries.
 
-```json
-// Send
-{"cmd": "feed", "data": {"portion": 2, "portion_interval": 2000}}
+Full command reference (all commands, payloads, validation rules, error codes): [`docs/interface_spec.md`](docs/interface_spec.md)
 
-// Response
-{"type": "response", "cmd": "feed", "status": "success", "time": "2026-04-25 08:30:00"}
+---
 
-// Async event (device-initiated)
-{"type": "feed_result", "mode": "manual", "portion": 2, "status": "success", "time": "..."}
+## Release Akışı
+
+Firmware ve Mobile App ayrı repolarda bağımsız olarak versiyonlanır. Her release için şu adımlar sırayla yapılır:
+
+**Commit aşaması** (günlük iş — commitler birikir):
 ```
+feat: yeni özellik
+fix: hata düzeltme
+feat: vX.Y.Z — açıklama   (release commit'i)
+```
+Format Conventional Commits. Mesajda `vX.Y.Z` varsa `prepare-commit-msg` hook'u ilgili dosyadaki versiyonu otomatik bump eder ve commit'e ekler — Firmware: `main/config/system_config.h` → `FIRMWARE_VERSION`; Mobile App: `package.json` → `version`. Versiyon içermeyen commit'lerde (ara çalışma) hook no-op kalır. Hook'lar `scripts/git-hooks/prepare-commit-msg`'de tanımlı, `core.hooksPath` ile aktif.
 
-Full command reference: [`docs/interface_spec.md`](docs/interface_spec.md)
+> **Yeni clone sonrası bir kez:** `git config core.hooksPath scripts/git-hooks` (her iki repo'da). Yapılmazsa otomatik versiyon bump çalışmaz.
+
+**Release aşaması** (`commit` komutu verildiğinde 1–2, `push` komutu verildiğinde 3–5):
+
+1. `docs/firmware_changelog.md` veya `docs/mobileapp_changelog.md` güncelle
+2. `git commit -m "feat: vX.Y.Z — kısa açıklama"` — hook versiyonu otomatik bump eder
+3. `git tag vX.Y.Z`
+4. `git push origin main && git push origin vX.Y.Z`
+5. GitHub Release oluştur (tag üzerinden, changelog bölümünü release notuna ekle)
+
+Versiyonlama kurallarının tamamı: [`VERSIONING.md`](VERSIONING.md)
 
 ---
 
 ## Cross-cutting Notes
 
 - The `docs/` folder at the repo root contains specs shared by both firmware and mobile. [`docs/ble_gatt_spec.md`](docs/ble_gatt_spec.md) is the authoritative source for all GATT UUIDs — keep `BleConstants.ts` and `ble_service.c` in sync with it.
+- **Changelogs live in `docs/`** — [`docs/firmware_changelog.md`](docs/firmware_changelog.md) and [`docs/mobileapp_changelog.md`](docs/mobileapp_changelog.md) are the canonical changelog files. `Firmware/CHANGELOG.md` kaldırılmıştır; firmware değişikliklerini `docs/firmware_changelog.md`'e ekle.
 - Device name prefix in firmware (`system_config.h`: `DEVICE_NAME_PREFIX "AquaFeeder-"`) must match `DEVICE_NAME_PREFIXES` in `BleConstants.ts`.
 - Wi-Fi / MQTT support is planned but not implemented. The system design doc references it, but no firmware or mobile code exists for it yet.

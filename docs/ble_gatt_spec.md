@@ -1,10 +1,10 @@
-# AKVARYUM OTOMATİK YEMLEME SİSTEMİ
+# TOLUN — AKILLI EV & AKVARYUM OTOMASYON PLATFORMU
 ## BLE GATT SPECIFICATION
 
 ---
 
 ## 1. Amaç
-Bu doküman, mobil uygulama ile cihaz arasındaki Bluetooth Low Energy (BLE) haberleşmesini tanımlar.
+Bu doküman, TolunControl mobil uygulaması ile Tolun platformu cihazları (AquaFeeder, AquaLighting, WallLighting, HomeLighting) arasındaki Bluetooth Low Energy (BLE) haberleşmesini tanımlar. Tüm cihaz tipleri aynı GATT yapısını paylaşır; komut seti cihaz tipine göre farklılaşır.
 
 ---
 
@@ -32,7 +32,7 @@ Bu doküman, mobil uygulama ile cihaz arasındaki Bluetooth Low Energy (BLE) hab
 
 ### 3.4 Feeding Service
 - UUID: `6E400000-B5A3-F393-E0A9-E50E24DCCA9E`
-- Açıklama: Besleme komutları, zamanlayıcı yönetimi ve cihaz durumu için kullanılır.
+- Açıklama: Besleme ve aydınlatma komutları, zamanlayıcı yönetimi, cihaz durumu ve log geçmişi için kullanılır. Tüm cihaz tipleri (AquaFeeder, AquaLighting, WallLighting, HomeLighting) aynı servis üzerinden haberleşir; geçerli komut seti cihaz tipine göre farklılaşır.
 
 ---
 
@@ -48,19 +48,19 @@ Bu doküman, mobil uygulama ile cihaz arasındaki Bluetooth Low Energy (BLE) hab
 - UUID: `0x2A29`
 - Properties: Read
 - Açıklama: Üretici adı. Sabit string olarak firmware'de tanımlanır.
-- Örnek Değer: `"AquaControl"`
+- Örnek Değer: `"TOLUNTECH"`
 
 ### 4.3 Model Number String
 - UUID: `0x2A24`
 - Properties: Read
 - Açıklama: Cihaz model numarası.
-- Örnek Değer: `"FishFeeder-v1"`
+- Örnek Değer: `"AquaFeeder"`
 
 ### 4.4 Firmware Revision String
 - UUID: `0x2A26`
 - Properties: Read
 - Açıklama: Çalışan firmware versiyonu. `system_config.h` içindeki `FIRMWARE_VERSION` değeriyle eşleşir.
-- Örnek Değer: `"1.5.0"`
+- Örnek Değer: `"1.17.0"`
 
 ### 4.5 Hardware Revision String
 - UUID: `0x2A27`
@@ -141,8 +141,7 @@ Bu doküman, mobil uygulama ile cihaz arasındaki Bluetooth Low Energy (BLE) hab
   "cmd": "feed",
   "data": {
     "portion": 3,
-    "portion_interval": 2000,
-    "feed_type": "quick"
+    "portion_interval": 2000
   }
 }
 ```
@@ -228,6 +227,65 @@ Bu doküman, mobil uygulama ile cihaz arasındaki Bluetooth Low Energy (BLE) hab
 }
 ```
 
+**set_light — Renk ve Parlaklığı Atomik Ayarla:**
+```json
+{
+  "cmd": "set_light",
+  "data": {
+    "r": 221,
+    "g": 127,
+    "b": 44,
+    "brightness": 80
+  }
+}
+```
+
+**set_color — Yalnızca Renk Ayarla:**
+```json
+{
+  "cmd": "set_color",
+  "data": { "r": 0, "g": 120, "b": 255 }
+}
+```
+
+**set_brightness — Yalnızca Parlaklık Ayarla:**
+```json
+{
+  "cmd": "set_brightness",
+  "data": { "brightness": 75 }
+}
+```
+
+**get_schedule — Tek Planı İndeks ile Getir:**
+```json
+{
+  "cmd": "get_schedule",
+  "data": { "index": 0 }
+}
+```
+
+> Yanıt `6E400002` notify üzerinden gelir. `index` 0'dan `schedule_count - 1`'e kadar tekrarlanarak tüm planlar çekilir.
+
+**get_feed_log_entry — Tek Besleme Log Kaydını İndeks ile Getir:**
+```json
+{
+  "cmd": "get_feed_log_entry",
+  "data": { "index": 0 }
+}
+```
+
+> Her response ~160 B. `index` 0'dan `feed_log_count - 1`'e kadar tekrarlanır.
+
+**get_lighting_log_entry — Tek Aydınlatma Log Kaydını İndeks ile Getir:**
+```json
+{
+  "cmd": "get_lighting_log_entry",
+  "data": { "index": 0 }
+}
+```
+
+> Her response ~145 B. `index` 0'dan `lighting_log_count - 1`'e kadar tekrarlanır.
+
 ---
 
 ### 7.2 Response Characteristic
@@ -268,22 +326,42 @@ Bu doküman, mobil uygulama ile cihaz arasındaki Bluetooth Low Energy (BLE) hab
 ### 7.4 Status Characteristic
 - UUID: `6E400004-B5A3-F393-E0A9-E50E24DCCA9E`
 - Properties: Read, Notify
-- Açıklama: Cihazın anlık durumu, planlar ve versiyon bilgisi.
+- Açıklama: Cihazın anlık durumu ve sayım bilgileri. Schedules array **içermez** — planlar per-index `get_schedule` komutuyla ayrıca çekilir. Log sayıları per-index `get_feed_log_entry` / `get_lighting_log_entry` döngüsü için kullanılır.
 
 #### Örnek Payload:
 ```json
 {
   "type": "state",
   "state": "IDLE",
-  "fw_version": "1.5.0",
+  "fw_version": "1.19.2",
   "hw_version": "1.0",
-  "time": "2025-04-24 08:30:00",
-  "schedules": [
-    { "index": 0, "hour": 8, "minute": 30, "portion": 2, "portion_interval": 60000 },
-    { "index": 1, "hour": 20, "minute": 0,  "portion": 1, "portion_interval": 0 }
-  ]
+  "time": "2026-05-14 10:00:00",
+  "led_on": false,
+  "schedule_count": 2,
+  "feed_log_count": 5,
+  "lighting_log_count": 3,
+  "first_conn_ts": 1747200000,
+  "total_uptime_sec": 86400
 }
 ```
+
+> `schedules` array'i v1.16.0'dan itibaren status payload'undan çıkarıldı. Planlar `get_schedule` komutu ile indeks bazlı çekilir.
+>
+> `first_conn_ts` ve `total_uptime_sec` alanları v1.19.0'da eklendi — cihazın ilk BT pairing zamanı (unix ts, `0` = henüz bağlanmamış) ve tüm güç çevrimleri boyunca biriken toplam çalışma saniyesi.
+
+---
+
+### 7.5 Feed Log Characteristic
+- UUID: `6E400005-B5A3-F393-E0A9-E50E24DCCA9E`
+- Properties: Read
+- Açıklama: Günlük besleme geçmişinin tamamını tek seferde döner (v1.14.0'da eklendi). v1.17.0'dan itibaren mobil uygulama bu karakteristiği doğrudan okumak yerine per-index `get_feed_log_entry` komutunu kullanır.
+
+---
+
+### 7.6 Lighting Log Characteristic
+- UUID: `6E400006-B5A3-F393-E0A9-E50E24DCCA9E`
+- Properties: Read
+- Açıklama: Günlük aydınlatma session geçmişinin tamamını tek seferde döner (v1.14.0'da eklendi). v1.17.0'dan itibaren mobil uygulama bu karakteristiği doğrudan okumak yerine per-index `get_lighting_log_entry` komutunu kullanır.
 
 ---
 
@@ -307,6 +385,8 @@ Bu doküman, mobil uygulama ile cihaz arasındaki Bluetooth Low Energy (BLE) hab
 | Feeding Resp             | `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`| Notify         |
 | Feeding Event            | `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`| Notify         |
 | Feeding Status           | `6E400004-B5A3-F393-E0A9-E50E24DCCA9E`| Read + Notify  |
+| Feed Log                 | `6E400005-B5A3-F393-E0A9-E50E24DCCA9E`| Read           |
+| Lighting Log             | `6E400006-B5A3-F393-E0A9-E50E24DCCA9E`| Read           |
 
 ---
 
@@ -329,14 +409,22 @@ Bu doküman, mobil uygulama ile cihaz arasındaki Bluetooth Low Energy (BLE) hab
 |--------------------|--------|-----------------------------------------------|
 | `portion`          | int    | Porsiyon adedi (1–10)                         |
 | `portion_interval` | int    | Porsiyon arası bekleme süresi (ms, 0–300000)  |
-| `feed_type`        | string | `"quick"` (hızlı) veya `"scheduled"` (planlı)|
 | `hour`             | int    | Saat (0–23)                                   |
 | `minute`           | int    | Dakika (0–59)                                 |
+| `end_hour`         | int    | Plan bitiş saati — yalnızca lighting planları (0–23) |
+| `end_minute`       | int    | Plan bitiş dakikası — yalnızca lighting planları (0–59) |
 | `old_hour`         | int    | Güncellenecek planın mevcut saati             |
 | `old_minute`       | int    | Güncellenecek planın mevcut dakikası          |
+| `kind`             | int    | Plan tipi — `0` feeder, `1` lighting          |
+| `active`           | bool   | Plan aktif/pasif bayrağı (true/false)         |
+| `r`, `g`, `b`      | int    | Renk kanalları (0–255) — lighting komutları ve planları |
+| `brightness`       | int    | Parlaklık (0–100) — lighting komutları ve planları |
+| `index`            | int    | Per-index sorgu indeksi (0…count-1)           |
 | `timestamp`        | int    | UNIX timestamp (yalnızca Device Time Service) |
 | `tz_offset`        | int    | UTC farkı dakika cinsinden (örn. 180 = UTC+3) |
 | `uptime_seconds`   | int    | Son açılıştan itibaren geçen süre (saniye)    |
+| `first_conn_ts`    | int    | İlk BT bağlantı unix ts (status payload)      |
+| `total_uptime_sec` | int    | Tüm güç çevrimleri toplam çalışma saniyesi (status payload) |
 
 ---
 

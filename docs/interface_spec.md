@@ -1,11 +1,11 @@
-# AKVARYUM OTOMATİK YEMLEME SİSTEMİ
+# TOLUN — AKILLI EV & AKVARYUM OTOMASYON PLATFORMU
 ## Interface Specification (BLE Protokolü)
 
 > **Durum:** 🧪 Test Aşaması  
 > **Baz Kaynak:** BLE GATT Specification  
-> **Son Güncelleme:** 2026-04-25
+> **Son Güncelleme:** 2026-05-14
 
-Bu doküman, mobil uygulama (React Native) ve ESP32 firmware arasındaki BLE haberleşme protokolünü tanımlar.
+Bu doküman, TolunControl mobil uygulaması ile Tolun platformu cihazları (AquaFeeder, AquaLighting, WallLighting, HomeLighting) arasındaki BLE haberleşme protokolünü tanımlar.
 
 ---
 
@@ -54,8 +54,7 @@ Tüm komutlar aşağıdaki formatta olmalıdır:
   "cmd": "feed",
   "data": {
     "portion": 2,
-    "portion_interval": 2000,
-    "feed_type": "quick"
+    "portion_interval": 2000
   }
 }
 ```
@@ -63,7 +62,6 @@ Tüm komutlar aşağıdaki formatta olmalıdır:
 **Alan Açıklamaları:**
 - `portion`: Porsiyon adedi (1–10)
 - `portion_interval`: Porsiyon arası bekleme süresi (ms), opsiyonel (varsayılan: 0)
-- `feed_type`: `"quick"` (hızlı) veya `"scheduled"` (planlı), opsiyonel
 
 ---
 
@@ -73,19 +71,52 @@ Tüm komutlar aşağıdaki formatta olmalıdır:
 {
   "cmd": "set_schedule",
   "data": {
+    "kind": 0,
     "hour": 8,
     "minute": 30,
     "portion": 2,
-    "portion_interval": 60000
+    "portion_interval": 60000,
+    "active": true,
+    "label": "Sabah"
   }
 }
 ```
 
-**Alan Açıklamaları:**
+**Alan Açıklamaları (Feeder Planı):**
+- `kind`: `0` = feeder planı
 - `hour`: Saat (0–23)
 - `minute`: Dakika (0–59)
 - `portion`: Porsiyon adedi (1–10)
 - `portion_interval`: Porsiyon arası bekleme süresi (ms, 0–300000 / max 5 dk), opsiyonel
+- `active`: Plan aktif mi (`true`/`false`), opsiyonel (varsayılan `true`)
+- `label`: Plan adı, opsiyonel (max 16 karakter)
+
+**Aydınlatma Planı (kind=1):**
+
+```json
+{
+  "cmd": "set_schedule",
+  "data": {
+    "kind": 1,
+    "hour": 8,
+    "minute": 0,
+    "end_hour": 22,
+    "end_minute": 0,
+    "r": 221,
+    "g": 127,
+    "b": 44,
+    "brightness": 80,
+    "active": true,
+    "label": "Gündüz"
+  }
+}
+```
+
+**Ek Alan Açıklamaları (Lighting Planı):**
+- `end_hour`, `end_minute`: Plan bitiş zamanı
+- `r`, `g`, `b`: Plan tetiklendiğinde uygulanacak renk (0–255)
+- `brightness`: Plan parlaklığı (0–100); `0` ise renk kaydı tutulmaz
+- Gece geçişli aralık desteklenir (`end < start` → ertesi gün)
 
 ---
 
@@ -167,7 +198,21 @@ Tüm komutlar aşağıdaki formatta olmalıdır:
 
 ---
 
-### 9) Besleme Loglarını Temizle
+### 9) Plan Sorgulama (Per-Index)
+
+```json
+{
+  "cmd": "get_schedule",
+  "data": { "index": 0 }
+}
+```
+
+**Alan Açıklamaları:**
+- `index`: 0'dan `schedule_count - 1`'e kadar; `get_status` yanıtındaki `schedule_count` kadar tekrarlanır
+
+---
+
+### 10) Besleme Loglarını Temizle
 
 ```json
 {
@@ -177,7 +222,37 @@ Tüm komutlar aşağıdaki formatta olmalıdır:
 
 ---
 
-### 10) Aydınlatma Kontrolü
+### 11) Besleme Log Kaydı Sorgulama (Per-Index)
+
+```json
+{
+  "cmd": "get_feed_log_entry",
+  "data": { "index": 0 }
+}
+```
+
+**Alan Açıklamaları:**
+- `index`: 0'dan `feed_log_count - 1`'e kadar; `get_status` yanıtındaki `feed_log_count` kadar tekrarlanır
+- Her yanıt ~160 B
+
+---
+
+### 12) Aydınlatma Log Kaydı Sorgulama (Per-Index)
+
+```json
+{
+  "cmd": "get_lighting_log_entry",
+  "data": { "index": 0 }
+}
+```
+
+**Alan Açıklamaları:**
+- `index`: 0'dan `lighting_log_count - 1`'e kadar; `get_status` yanıtındaki `lighting_log_count` kadar tekrarlanır
+- Her yanıt ~145 B
+
+---
+
+### 13) Aydınlatma Kontrolü
 
 ```json
 { "cmd": "lighting_on" }
@@ -189,7 +264,7 @@ Tüm komutlar aşağıdaki formatta olmalıdır:
 
 ---
 
-### 11) Parlaklık Ayarı
+### 14) Parlaklık Ayarı
 
 ```json
 {
@@ -205,7 +280,7 @@ Tüm komutlar aşağıdaki formatta olmalıdır:
 
 ---
 
-### 12) Renk Ayarı (RGB / RGBW)
+### 15) Renk Ayarı (RGB)
 
 ```json
 {
@@ -213,36 +288,37 @@ Tüm komutlar aşağıdaki formatta olmalıdır:
   "data": {
     "r": 0,
     "g": 120,
-    "b": 255,
-    "w": 80
+    "b": 255
   }
 }
 ```
 
 **Alan Açıklamaları:**
 - `r`, `g`, `b`: Kırmızı / Yeşil / Mavi kanalları (0–255)
-- `w`: Beyaz kanal (0–255), opsiyonel — yalnızca RGBW cihazlarda dolu
+
+> Donanım WS2812B (3 kanal); RGBW desteği yok.
 
 ---
 
-### 13) Hazır Mod
+### 16) Atomik Renk + Parlaklık Ayarı
 
 ```json
 {
-  "cmd": "set_preset",
+  "cmd": "set_light",
   "data": {
-    "preset": "daylight"
+    "r": 221,
+    "g": 127,
+    "b": 44,
+    "brightness": 80
   }
 }
 ```
 
-**Geçerli Preset Değerleri:**
-- `daylight` — Gün ışığı (sıcak beyaz, tam parlaklık)
-- `night` — Gece (soluk mavi, düşük parlaklık)
-- `plant` — Bitki modu (mavi + kırmızı spektrum)
-- `moonlight` — Ay ışığı (çok düşük parlaklık, serin mavi)
-- `sunset` — Gün batımı (sıcak turuncu)
-- `ocean` — Okyanus (derin mavi)
+**Alan Açıklamaları:**
+- `r`, `g`, `b`: Renk kanalları (0–255)
+- `brightness`: Parlaklık (0–100)
+
+> `set_color` + `set_brightness` ardışık çağrılarına alternatif; tek atomik işlemde uygular. Plan tetiklemelerinde mobil bu komutu kullanır.
 
 ---
 
@@ -309,26 +385,58 @@ Cihaz, komut olmadan da veri gönderebilir.
 
 ## 7. State (Durum) Yapısı
 
+`get_status` komutu veya cihaz tarafından tetiklenen state değişikliklerinde `6E400004` (Read + Notify) üzerinden döner.
+
 ```json
 {
   "type": "state",
-  "state": "IDLE"
+  "state": "IDLE",
+  "fw_version": "1.19.2",
+  "hw_version": "1.0",
+  "time": "2026-05-14 10:00:00",
+  "led_on": false,
+  "schedule_count": 2,
+  "feed_log_count": 5,
+  "lighting_log_count": 3,
+  "first_conn_ts": 1747200000,
+  "total_uptime_sec": 86400
 }
 ```
 
-### State Değerleri:
-- IDLE
-- RUNNING
-- ERROR
+### Alan Açıklamaları:
+- `state`: Cihaz durumu — `"IDLE"`, `"RUNNING"`, `"ERROR"`
+- `fw_version`: `system_config.h` → `FIRMWARE_VERSION`
+- `hw_version`: `system_config.h` → `HARDWARE_VERSION`
+- `time`: Cihazın yerel saati (`YYYY-MM-DD HH:MM:SS`)
+- `led_on`: Aydınlatma şeridinin açık/kapalı durumu
+- `schedule_count`: NVS'deki kayıtlı plan sayısı (0–5); planlar `get_schedule` ile ayrıca çekilir
+- `feed_log_count`: Günlük besleme log kayıt sayısı (0–20); kayıtlar `get_feed_log_entry` ile ayrıca çekilir
+- `lighting_log_count`: Günlük aydınlatma log kayıt sayısı; kayıtlar `get_lighting_log_entry` ile ayrıca çekilir
+- `first_conn_ts`: Cihazın ilk BT pairing unix timestamp'i (`0` = henüz bağlanmamış). NVS'te kalıcı, bir daha değişmez.
+- `total_uptime_sec`: Tüm güç çevrimleri boyunca biriken toplam çalışma süresi (saniye). NVS'te kalıcı, her 5 dakikada bir flush'lanır.
+
+> `schedules` array'i v1.16.0'dan itibaren status payload'undan çıkarıldı.
+>
+> `first_conn_ts` ve `total_uptime_sec` v1.19.0'da eklendi — cihazın yaşam istatistikleri (servis/satış sonrası takibi için).
 
 ---
 
 ## 8. MQTT Topic Yapısı
 
-- aquarium/feed/set
-- aquarium/feed/result
-- aquarium/device/state
-- aquarium/device/error
+> Wi-Fi / MQTT desteği planlanmaktadır; henüz firmware veya mobil uygulama kodu mevcut değildir.
+
+| Yön | Topic | Açıklama |
+|---|---|---|
+| Mobil → Cihaz | `tolun/{device_id}/feed/command` | Besleme komutu |
+| Cihaz → Mobil | `tolun/{device_id}/feed/result` | Besleme sonucu event |
+| Mobil → Cihaz | `tolun/{device_id}/lighting/command` | Aydınlatma komutu |
+| Cihaz → Mobil | `tolun/{device_id}/lighting/result` | Aydınlatma sonucu event |
+| Cihaz → Mobil | `tolun/{device_id}/device/state` | Anlık durum değişikliği |
+| Cihaz → Mobil | `tolun/{device_id}/device/error` | Hata bildirimi |
+| Cihaz → Mobil | `tolun/{device_id}/log/feed` | Besleme log güncellemesi |
+| Cihaz → Mobil | `tolun/{device_id}/log/lighting` | Aydınlatma log güncellemesi |
+
+`{device_id}`: Cihazın BLE adının son 4 karakteri (örn. `AquaFeeder-1A2B` → `1A2B`).
 
 ---
 
@@ -342,7 +450,7 @@ Cihaz, komut olmadan da veri gönderebilir.
 | `minute` | 0 – 59 | |
 | `timestamp` | Geçerli UNIX timestamp | Saniye cinsinden |
 | `tz_offset` | -720 – 840 | Dakika cinsinden UTC farkı (örn. UTC+3 = 180) |
-| Maksimum planlar | 8 | Cihazda saklanabilecek otomatik yemleme planı sayısı |
+| Maksimum planlar | 5 | Cihazda saklanabilecek otomatik plan sayısı |
 | Minimum yemleme aralığı | 60 saniye | Art arda iki feed komutu arasındaki zorunlu bekleme |
 | Günlük porsiyon limiti | 30 | Cihazın bir günde kabul ettiği maksimum toplam porsiyon |
 

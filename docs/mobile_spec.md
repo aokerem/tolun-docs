@@ -1,5 +1,5 @@
 # MOBILE SPECIFICATION
-## AquaControl — React Native / Expo
+## TolunControl — React Native / Expo
 
 > **Durum:** 🧪 Test Aşaması  
 > **Platform:** Android (iOS desteği gelecek)  
@@ -10,7 +10,7 @@
 ---
 
 ## 1. Amaç
-Bu doküman, mobil uygulamanın (AquaControl) işlevsel gereksinimlerini, ekran akışlarını ve cihaz (ESP32) ile olan BLE iletişim davranışlarını tanımlar.
+Bu doküman, mobil uygulamanın (TolunControl) işlevsel gereksinimlerini, ekran akışlarını ve cihaz (ESP32) ile olan BLE iletişim davranışlarını tanımlar.
 
 ---
 
