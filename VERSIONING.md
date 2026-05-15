@@ -138,6 +138,19 @@ git push origin v1.18.0
 
 GitHub'da ilgili tag üzerinden Release oluştur. Release notlarına changelog'dan ilgili versiyon bölümünü yapıştır.
 
+#### 6. tolun-docs'u senkronla
+
+Changelog güncellemesi `docs/` altında olduğundan **tolun-docs** repo'sunda da commit + push gerekir. `Firmware/` ve `Mobile App/`'teki `post-commit` hook'u 2. adımdan sonra zaten uyarı basacak; sarı uyarıyı gördüğünde:
+
+```bash
+cd ..   # tolun root (tolun-docs)
+git add -A
+git commit -m "docs: firmware vX.Y.Z changelog"   # veya "docs: mobileapp vX.Y.Z changelog"
+git push
+```
+
+Bu adım atlanırsa GitHub'daki tolun-docs eski changelog'u gösterir; firmware/mobile release notları ile arada drift oluşur.
+
 ---
 
 ## Uyumluluk Matrisi

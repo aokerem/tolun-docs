@@ -37,6 +37,15 @@ This root directory (`tolun/`) is a monorepo-style workspace with **three indepe
 
 > **IMPORTANT:** Git komutu çalıştırmadan önce hangi repo'da olduğundan emin ol. Doküman/spec değişiklikleri tolun root'ta, firmware değişiklikleri `Firmware/`'de, mobil değişiklikleri `Mobile App/`'te commit edilir. Protokol değişikliği gibi her iki tarafı etkileyen iş için **üç ayrı commit** gerekir (firmware + mobile + spec).
 
+> **🔴 UNUTMA — tolun-docs senkronizasyonu:** Her firmware veya mobile commit'inden sonra ilgili changelog (`docs/firmware_changelog.md` / `docs/mobileapp_changelog.md`) ve gerekirse spec dosyaları (`docs/ble_gatt_spec.md`, `docs/interface_spec.md` vb.) tolun root'ta da commit + push edilmelidir. `Firmware/` ve `Mobile App/`'teki `post-commit` hook'u commit sonrası bu değişiklikler bekliyorsa terminale uyarı basar — sarı uyarı gördüğünde:
+>
+> ```bash
+> cd ..   # tolun root
+> git add -A && git commit -m "docs: <açıklama>" && git push
+> ```
+>
+> Bu sayede sub-repo commit/release'leri ile paylaşılan doküman değişiklikleri senkron kalır.
+
 ---
 
 ## Firmware
