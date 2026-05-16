@@ -6,13 +6,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Tolun** is a smart home & aquarium automation platform — an ESP32-S3 firmware paired with a React Native mobile app that communicate over BLE. The platform covers three use cases:
+**Tolun** is a smart home & aquarium automation platform — an ESP32-S3 firmware paired with a React Native mobile app that communicate over BLE. A single firmware codebase and a single mobile app cover **four device variants**, distinguished by their BLE advertisement name prefix:
 
-- **Aquarium feeding** — automated fish feeder with scheduling and portion control
-- **Aquarium lighting** — automatic aquarium light control with scheduling and color/brightness management
-- **Home lighting** — integration with whole-home lighting systems (wall lights, ambient lighting)
+- **AquaFeeder** — automated fish feeder with scheduling and portion control
+- **AquaLighting** — aquarium light control with scheduling and color/brightness management
+- **WallLighting** — wall-mounted lighting fixtures
+- **HomeLighting** — whole-home / ambient lighting
 
-All device types share the same BLE protocol and mobile app; firmware behavior varies by device type.
+The device variant is selected at firmware build time via `DEVICE_NAME_PREFIX` and `DEVICE_MODEL` in `main/config/system_config.h`. The same prefix must appear in `BleConstants.ts` (`DEVICE_NAME_PREFIXES`) on the mobile side so the app can recognise and route to the correct device screen.
 
 - **`Firmware/`** — ESP-IDF v6.0 (FreeRTOS) C firmware for ESP32-S3
 - **`Mobile App/`** — **TolunControl** — React Native + Expo (TypeScript) mobile application
@@ -85,22 +86,25 @@ BLE Notify ← resp_queue ←────┴────────────
 Scheduler  → cmd_queue   (auto-feed triggers)
 ```
 
-**FreeRTOS tasks** (`main/main.c` init order):
+**FreeRTOS tasks** (priorities defined in `main/config/system_config.h`):
 | Task | File | Priority |
 |---|---|---|
 | Motor Task | `drivers/motor_driver.c` | 6 |
-| Command Handler | `core/command_handler.c` | 5 |
-| BLE Response Task | `comm/ble_service.c` | 5 |
+| Command Handler | `core/command_handler.c` | 4 |
+| BLE Response Task | `comm/ble_service.c` | 4 |
 | Scheduler Task | `scheduler/scheduler.c` | 4 |
 | Sensor Task | `drivers/sensor_driver.c` | 3 |
+| OLED Display Task | `drivers/oled_display.c` | 2 |
 
 **Key modules:**
-- `main/config/system_config.h` — single source of truth for all constants (pin numbers, limits, NVS keys, queue/task sizes)
+- `main/config/system_config.h` — single source of truth for all constants (pin numbers, limits, NVS keys, queue/task sizes, `DEVICE_NAME_PREFIX`, `DEVICE_MODEL`)
 - `core/state_manager.c` — mutex-protected state machine (`IDLE → RUNNING → IDLE`, any → `ERROR`)
 - `core/command_handler.c` — validates BLE commands from `cmd_queue`, enforces state and safety rules
-- `core/feed_log.c` — ring buffer (max 20 entries) persisted to NVS
+- `core/feed_log.c` — ring buffer (max 20 entries) persisted to NVS; resets daily at 00:00 UTC
+- `core/lighting_log.c` — ring buffer (max 20 entries) persisted to NVS for lighting sessions
+- `core/device_stats.c` — first BT connection timestamp + cumulative uptime, persisted to NVS every 5 min
 - `scheduler/scheduler.c` — checks schedules every 60 s; up to 5 stored in NVS
-- `comm/ble_service.c` — NimBLE GATT server; device advertises as `AquaFeeder-XXXX`
+- `comm/ble_service.c` — NimBLE GATT server; device advertises as `<DEVICE_NAME_PREFIX><XXXX>` where `XXXX` is the last 4 hex digits of the MAC (e.g. `AquaLighting-AB12`)
 
 **NVS namespace:** `"tolun"` (key names in `system_config.h`)
 
@@ -113,7 +117,7 @@ Scheduler  → cmd_queue   (auto-feed triggers)
 
 ### GATT Services
 
-Two custom services + two standard services:
+One custom service + three Bluetooth SIG standard services:
 
 | Service | Service UUID | Characteristic | Char UUID | Properties |
 |---|---|---|---|---|
@@ -121,16 +125,20 @@ Two custom services + two standard services:
 | | | Response | `6E400002-…` | Notify |
 | | | Event | `6E400003-…` | Notify |
 | | | Status | `6E400004-…` | Read + Notify |
-| | | Feed Log | `6E400005-…` | Read |
-| | | Lighting Log | `6E400006-…` | Read |
 | **Device Time Service** | `0x1847` (standard) | Time Command | `6E300001-…` | Write |
 | | | Time Response | `6E300002-…` | Notify |
-| **Device Information Service** | `0x180A` (standard) | FW Revision | `0x2A26` | Read |
-| | | HW Revision | `0x2A27` | Read |
+| **Device Information Service** | `0x180A` (standard) | Device Name | `0x2A00` | Read |
+| | | Manufacturer | `0x2A29` | Read |
 | | | Model Number | `0x2A24` | Read |
+| | | FW Revision | `0x2A26` | Read |
+| | | HW Revision | `0x2A27` | Read |
 | **Elapsed Time Service** | `0x183F` (standard) | Elapsed Time | `0x2BF2` | Read + Notify |
 
 All `6E4xxxxx` and `6E3xxxxx` UUIDs share the suffix `-B5A3-F393-E0A9-E50E24DCCA9E`.
+
+**MTU strategy** — peripheral advertises preferred MTU 512 (`CONFIG_BT_NIMBLE_ATT_PREFERRED_MTU=512`). Android negotiates up to 517, but `BluetoothGatt.MAX_ATTR_LEN` caps every single ATT transaction at **512 bytes**. To stay under that cap, all bulk data (schedules, feed log, lighting log) is fetched **per-index** via JSON commands on `6E400001` — there are no bulk-read characteristics. An earlier `Feed Log` (`6E400005`) and `Lighting Log` (`6E400006`) read characteristic pair existed but hit the 512 B cap and was removed.
+
+**DIS contract** — `Model Number` (`0x2A24`) must match `DEVICE_MODEL` in `system_config.h` and the BLE advertisement prefix. `FW Revision` reflects `FIRMWARE_VERSION`, `HW Revision` reflects `HARDWARE_VERSION`. The mobile app reads `fwVersion` / `hwVersion` from DIS, **not** from the status JSON payload.
 
 `set_time` must go to the **Device Time Service** (service `0x1847`; write char `6E300001-…`, notify char `6E300002-…`), not the Feeding Service. Send once per connection.
 
@@ -173,21 +181,26 @@ ThemeProvider → AppStateProvider → BleProvider → app screens
 ```
 
 **BLE layer** (`src/core/ble/`):
-- `BleService.ts` — singleton; wraps `react-native-ble-plx`; handles scan, connect, MTU negotiation, command send with timeout/retry, notify subscriptions
-- `BleContext.tsx` — React context over `BleService`; exposes `sendCommand`, connection state, `deviceState`, `deviceInfo` (includes `schedule_count`; schedules fetched individually via `get_schedule` by index; feed/lighting logs fetched via `get_feed_log` / `get_lighting_log`)
-- `BleConstants.ts` — all GATT UUIDs; supported device name prefixes (`AquaFeeder-`, `AquaLighting-`, `WallLighting-`, `HomeLighting-`)
+- `BleService.ts` — singleton; wraps `react-native-ble-plx`; handles scan, connect, MTU negotiation (target 512), command send with 3 s timeout + 2 retries, notify subscriptions, and per-index pagination of schedules + logs
+- `BleContext.tsx` — React context over `BleService`; exposes `sendCommand`, connection state, `deviceState`, `deviceInfo` (includes `fwVersion` / `hwVersion` read from DIS, plus `schedule_count` / `feed_log_count` / `lighting_log_count` from status — each list is then fetched per-index)
+- `BleConstants.ts` — all GATT UUIDs; supported device name prefixes (`AquaFeeder-`, `AquaLighting-`, `WallLighting-`, `HomeLighting-`); `deviceTypeFromName()` maps each prefix to a user-facing device type label
 
 **App state** (`src/data/AppStateContext.tsx`):
 - Persists `devices`, `plans`, and `feedLogs` to `AsyncStorage` (keys prefixed `@tolun:`)
 - `syncDeviceLogs` deduplicates by timestamp (±10 s window)
 
-**On connect**, `app/_layout.tsx` runs sequential per-index commands then syncs:
-1. `get_status` → returns device state + `schedule_count` + `feed_log_count` + `lighting_log_count`
-2. `get_schedule` (repeated per index, 0…schedule_count-1) → fetches each plan individually
-3. `get_feed_log_entry` (repeated per index, 0…feed_log_count-1) → fetches each feed log entry
-4. `get_lighting_log_entry` (repeated per index, 0…lighting_log_count-1) → fetches each lighting log entry
+**On connect**, `BleService.ts` performs sequential reads (parallel `Promise.all` is deliberately avoided to stay under NimBLE's `GATT_MAX_PROCS=4` ceiling):
+1. `readDIS()` → 5 DIS reads (`deviceName`, `manufacturer`, `modelNumber`, `fwVersion`, `hwVersion`)
+2. `readUptime()` → Elapsed Time Service (`0x2BF2`)
+3. `syncTime()` → writes current epoch + tz offset on `6E300001`
+4. `readStatus()` → reads status char (`6E400004`). Status JSON carries `schedule_count` / `feed_log_count` / `lighting_log_count`. `readStatus` then chains:
+   - `fetchSchedules(count)` → loops `get_schedule {index:i}` for i in 0…count-1
+   - `fetchFeedLog(count)` → loops `get_feed_log_entry {index:i}`
+   - `fetchLightingLog(count)` → loops `get_lighting_log_entry {index:i}`
 
-Headless sync components: `DevicePlanSync` (overwrites local plans with fetched schedules), `FeedLogSync` (merges feed/lighting logs).
+Each per-index response is ~150–250 B, well under the 512 B ATT cap. The three `fetch*` methods use `*InFlight` reentrancy guards so repeated status notifies (e.g. after `lighting_off`) don't spawn overlapping fetch loops. `lastScheduleCount` / `lastFeedLogCount` / `lastLightingLogCount` cache last-seen counts — if a notify arrives with the same count, the corresponding fetch is skipped. All three cached values are reset to `-1` on disconnect to guarantee a full fetch on reconnect.
+
+Headless sync components in `app/_layout.tsx`: `DevicePlanSync` (overwrites local plans with fetched schedules), `FeedLogSync` (merges feed logs with ±10 s timestamp deduplication), `LightingLogSync` (same dedup model for lighting sessions; manual on/off also writes a local entry immediately without waiting for BLE).
 
 **Routing** (`app/(tabs)/`): `index` (Home), `plans`, `devices`, `settings` — device-type-specific screens are in `src/devices/Feeder/` and `src/devices/Lighting/`.
 
@@ -228,6 +241,12 @@ Versiyonlama kurallarının tamamı: [`VERSIONING.md`](VERSIONING.md)
 ## Cross-cutting Notes
 
 - The `docs/` folder at the repo root contains specs shared by both firmware and mobile. [`docs/ble_gatt_spec.md`](docs/ble_gatt_spec.md) is the authoritative source for all GATT UUIDs — keep `BleConstants.ts` and `ble_service.c` in sync with it.
-- **Changelogs live in `docs/`** — [`docs/firmware_changelog.md`](docs/firmware_changelog.md) and [`docs/mobileapp_changelog.md`](docs/mobileapp_changelog.md) are the canonical changelog files. `Firmware/CHANGELOG.md` kaldırılmıştır; firmware değişikliklerini `docs/firmware_changelog.md`'e ekle.
-- Device name prefix in firmware (`system_config.h`: `DEVICE_NAME_PREFIX "AquaFeeder-"`) must match `DEVICE_NAME_PREFIXES` in `BleConstants.ts`.
+- **Changelogs live in `docs/`** — [`docs/firmware_changelog.md`](docs/firmware_changelog.md) and [`docs/mobileapp_changelog.md`](docs/mobileapp_changelog.md) are the canonical changelog files.
+- **Device variant invariants** — for each build, all four of these must agree:
+  1. `DEVICE_NAME_PREFIX` in `system_config.h` (e.g. `"AquaLighting-"`)
+  2. `DEVICE_MODEL` in `system_config.h` (e.g. `"AquaLighting"`) — exposed via DIS `0x2A24`
+  3. The matching entry in `DEVICE_NAME_PREFIXES` in `BleConstants.ts`
+  4. The corresponding label returned by `deviceTypeFromName()` in `BleConstants.ts`
+  Mismatch causes the device to either not appear in scan results or be misclassified in the UI.
+- **No bulk-read log/schedule characteristics** — every schedule, feed log entry, and lighting log entry travels through the `Command` (`6E400001`) / `Response` (`6E400002`) pair via per-index JSON commands. This is intentional: Android's `BluetoothGatt.MAX_ATTR_LEN` 512 B cap rules out single-shot bulk reads for these payloads.
 - Wi-Fi / MQTT support is planned but not implemented. The system design doc references it, but no firmware or mobile code exists for it yet.

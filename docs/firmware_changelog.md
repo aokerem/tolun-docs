@@ -2,8 +2,35 @@
 ## Tolun — Akıllı Ev & Akvaryum Otomasyon Platformu (ESP32-S3)
 
 > **Durum:** 🧪 Test Aşaması  
-> **Son Sürüm:** v1.19.2  
+> **Son Sürüm:** v1.20.0  
 > **Framework:** ESP-IDF v6.0, FreeRTOS
+
+---
+
+## v1.20.0 — DIS Refactor & Ölü BLE Karakteristik Temizliği (16 Mayıs 2026)
+
+### Özet
+Cihaz modeli artık her build varyantı için doğru DIS Model Number (`0x2A24`) döndürüyor — eskiden 4 cihaz tipinin (AquaFeeder, AquaLighting, WallLighting, HomeLighting) hepsi sabit `"AquaFeeder"` raporluyordu. Firmware versiyonu ve donanım versiyonu status JSON yerine standart DIS karakteristiklerinden (`0x2A26` / `0x2A27`) okunuyor; status payload'u ~30 B hafifledi. Kullanılmayan iki GATT karakteristiği (`6E400005` Feed Log + `6E400006` Lighting Log) ve buna bağlı ölü kod tamamen kaldırıldı — log transferi v1.17.0'dan beri zaten per-index komutlar üzerinden yapılıyordu.
+
+### Added
+- `config/system_config.h`: `DEVICE_MODEL` makrosu eklendi. Her build varyantı için `DEVICE_NAME_PREFIX` ile birlikte tanımlanması gerekir (örn. `DEVICE_NAME_PREFIX "AquaLighting-"` + `DEVICE_MODEL "AquaLighting"`). DIS Model Number karakteristiği bu değeri sunar.
+
+### Changed
+- `comm/ble_service.c`: `s_dis_model[]` artık sabit `"AquaFeeder"` yerine `DEVICE_MODEL` makrosundan türetiliyor — build hedefiyle DIS Model Number otomatik senkron.
+- `comm/ble_service.h`: Header'ın en üstündeki servis tablosu yorumu güncellendi: Time Service'in standart `0x1847` UUID kullandığı doğru yansıtıldı (eskiden hatalı olarak özel `6E300000-...` yazıyordu), kaldırılan log karakteristikleri çıkarıldı, DIS ve Elapsed Time Service detayları eklendi.
+- `comm/ble_service.c`: `s_device_name` yorumu güncel `DEVICE_NAME_PREFIX` formatına göre düzeltildi.
+- `utils/json_parser.h/.c`: `json_build_state()` imzasından `fw_version` ve `hw_version` parametreleri çıkarıldı. Status payload'u artık bu alanları taşımıyor; mobil DIS karakteristiklerinden (`0x2A26` / `0x2A27`) okuyor. Tek bir status notify'da ~30 B tasarruf — MTU bütçesine katkı.
+- `comm/ble_service.c`: `json_build_state()` call site'ı yeni imzaya uyarlandı.
+
+### Removed
+- `comm/ble_service.c`: `feed_log_uuid` (`6E400005`) ve `lighting_log_uuid` (`6E400006`) UUID tanımları, `s_feed_log_handle` / `s_lighting_log_handle` handle değişkenleri ve GATT tablosundaki iki karakteristik girişi silindi.
+- `comm/ble_service.c`: `ble_feed_log_access_cb` ve `ble_lighting_log_access_cb` access callback fonksiyonları silindi (~40 satır). İçindeki `static char s_feed_log_buf[1536]` ve `static char s_lighting_log_buf[1536]` BSS buffer'ları artık yok — **~3 KB RAM tasarrufu**.
+- `utils/json_parser.h/.c`: `json_build_feed_log()` ve `json_build_lighting_log()` toplu array kuran fonksiyonlar silindi. Per-entry `_entry` versiyonları (komut handler kullanıyor) korundu.
+
+### Background
+**DIS Model Number bug'ı:** Tek codebase ile 4 cihaz türü ürettiğimizden `DEVICE_NAME_PREFIX` build hedefine göre değişiyordu ama `s_dis_model[]` sabit `"AquaFeeder"` string'iydi. Sonuç: AquaLighting build'inde BLE adı `AquaLighting-AB12` ama DIS Model Number `"AquaFeeder"` — nRF Connect, sistem Bluetooth ayarları ve mobil uygulamanın `lastDeviceInfo.modelNumber` alanında yanlış değer. 4 varyanttan 1'i (AquaFeeder) tesadüfen doğruydu. `DEVICE_MODEL` makrosu artık prefix ile birlikte tanımlanıyor.
+
+**Ölü karakteristiklerin hikayesi:** `6E400005` / `6E400006` v1.14.0'da eklendi — tek ATT Read ile tüm log array'ini JSON olarak döndürmek için. v1.17.0'da Android `BluetoothGatt.MAX_ATTR_LEN` 512 B sınırına çarpıldı (20 entry × ~90 B = ~1800 B JSON kesiliyor → `JSON Parse error: Unexpected end of input`). Çözüm olarak per-index `get_feed_log_entry` / `get_lighting_log_entry` komutlarına geçildi. Karakteristikler firmware'de kaldı ama mobil bu UUID'lere bağlanmıyordu — ölü kod durumundaydı. nRF Connect ile cihaza bakanlar hâlâ bu karakteristikleri görüyor ve okurken aynı parse hatasını alıyordu. Bu sürümde tablodan, callback'lerden ve JSON builder'lardan tamamen kaldırıldı.
 
 ---
 

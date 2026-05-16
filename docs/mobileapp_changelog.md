@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.35.0] - 2026-05-16
+
+### Added
+- `src/core/ble/BleService.ts`: `DIS_FW_REVISION_UUID` ve `DIS_HW_REVISION_UUID` import edildi. `readDIS()` artık beş paralel DIS okuması yapıyor — eskiden sadece `deviceName`, `manufacturer`, `modelNumber` okunuyordu; bunlara `fwVersion` (`0x2A26`) ve `hwVersion` (`0x2A27`) eklendi. Standart DIS karakteristikleri tek karakter farkıyla (~5–10 B) çağrı başına ve MTU bütçesi için tamamen serbest.
+
+### Changed
+- `src/core/ble/BleService.ts`: `readStatus()` artık status JSON'undan `fw_version` ve `hw_version` alanlarını **parse etmiyor**. Bu alanlar firmware v1.20.0'dan itibaren payload'da yok; `lastDeviceInfo.fwVersion` ve `hwVersion` `readDIS()` üzerinden DIS karakteristiklerinden besleniyor. Status notify yolu ~30 B daha hafif.
+
+### Removed
+- `src/core/ble/BleConstants.ts`: `FEED_LOG_CHAR_UUID` (`6E400005`) ve `LIGHTING_LOG_CHAR_UUID` (`6E400006`) export'ları kaldırıldı. Bu iki sabit hiçbir yerden import edilmiyordu — uygulama v1.29.0'dan beri log girişlerini per-index komutlar (`get_feed_log_entry` / `get_lighting_log_entry`) üzerinden çekiyor; ATT Read karakteristikleri yalancı API kontratı sergiliyordu. Firmware v1.20.0 ile birlikte ilgili GATT karakteristikleri de cihaz tarafında kaldırıldı; bu iki sabite başvurmaya çalışan kod artık ölü uçtu.
+
+### Background
+**DIS'ten okuma temizliği:** `fwVersion` / `hwVersion` aynı anda iki yoldan geliyordu — `readDIS()` standart DIS karakteristiklerinden (`0x2A24`, `0x2A29`, `0x2A00` okuyordu ama `0x2A26` / `0x2A27` okumuyordu) ve `readStatus()` JSON payload'undan. Status payload'undaki versiyon string'leri ~30 B tutuyordu; DIS karakteristikleri zaten cihazda mevcut ve standart Bluetooth SIG arayüzüyle aynı bilgiyi sunuyordu. Tek kanonik kaynak DIS'e taşındı, status payload sadeleşti — MTU bütçesi büyüyor ve mimari daha temiz.
+
+**Ölü sabitlerin hikayesi:** `FEED_LOG_CHAR_UUID` ve `LIGHTING_LOG_CHAR_UUID` v1.14.0'da eklenmişti — firmware'in tek-ATT-Read ile tüm log JSON'unu döndüren karakteristiklerine bağlanmak için. v1.29.0'da Android `BluetoothGatt.MAX_ATTR_LEN` 512 B sınırı yüzünden per-index komut akışına geçildi (`readFeedLog()` / `readLightingLog()` metotları o sürümde silinmişti). Sabitler `BleConstants.ts`'de kaldı, kimse import etmiyordu — ileride bir geliştirici "neden 20 ayrı komut atıyoruz?" diye refaktör başlatıp aynı MTU duvarına çarpma riski vardı. Şimdi tamamen temizlendi.
+
+---
+
 ## [1.34.4] - 2026-05-15
 
 ### Fixed
