@@ -41,8 +41,12 @@ Bu doküman, TolunControl mobil uygulaması ile Tolun platformu cihazları (Aqua
 ### 4.1 Device Name
 - UUID: `0x2A00`
 - Properties: Read
-- Açıklama: Cihazın BLE üzerinden yayınlanan adı.
-- Örnek Değer: `"AquaFeeder"`
+- Açıklama: Cihazın BLE üzerinden yayınlanan adı. Format: `<DEVICE_NAME_PREFIX><XXXX>` — prefix `system_config.h`'da build hedefine göre tanımlı, `XXXX` MAC adresinin son 4 hex karakteri.
+- Örnek Değerler:
+  - `"AquaFeeder-AB12"` (balık besleyici)
+  - `"AquaLighting-AB12"` (akvaryum aydınlatma)
+  - `"WallLighting-AB12"` (duvar aydınlatma)
+  - `"HomeLighting-AB12"` (ev/ortam aydınlatma)
 
 ### 4.2 Manufacturer Name String
 - UUID: `0x2A29`
@@ -53,19 +57,19 @@ Bu doküman, TolunControl mobil uygulaması ile Tolun platformu cihazları (Aqua
 ### 4.3 Model Number String
 - UUID: `0x2A24`
 - Properties: Read
-- Açıklama: Cihaz model numarası.
-- Örnek Değer: `"AquaFeeder"`
+- Açıklama: Cihaz model numarası. `system_config.h` içindeki `DEVICE_MODEL` makrosuyla eşleşir; her build varyantı için ayrı tanımlanır (Device Name prefix'i ile aynı senkronizasyon kuralı).
+- Olası Değerler: `"AquaFeeder"`, `"AquaLighting"`, `"WallLighting"`, `"HomeLighting"`
 
 ### 4.4 Firmware Revision String
 - UUID: `0x2A26`
 - Properties: Read
-- Açıklama: Çalışan firmware versiyonu. `system_config.h` içindeki `FIRMWARE_VERSION` değeriyle eşleşir.
-- Örnek Değer: `"1.17.0"`
+- Açıklama: Çalışan firmware versiyonu. `system_config.h` içindeki `FIRMWARE_VERSION` değeriyle eşleşir. **v1.20.0'dan itibaren mobil uygulama `fwVersion`'u status payload'undan değil bu karakteristikten okur.**
+- Örnek Değer: `"1.20.0"`
 
 ### 4.5 Hardware Revision String
 - UUID: `0x2A27`
 - Properties: Read
-- Açıklama: Donanım revizyonu. `system_config.h` içindeki `HARDWARE_VERSION` değeriyle eşleşir.
+- Açıklama: Donanım revizyonu. `system_config.h` içindeki `HARDWARE_VERSION` değeriyle eşleşir. **v1.20.0'dan itibaren mobil uygulama `hwVersion`'u status payload'undan değil bu karakteristikten okur.**
 - Örnek Değer: `"1.0"`
 
 ---
@@ -333,9 +337,7 @@ Bu doküman, TolunControl mobil uygulaması ile Tolun platformu cihazları (Aqua
 {
   "type": "state",
   "state": "IDLE",
-  "fw_version": "1.19.2",
-  "hw_version": "1.0",
-  "time": "2026-05-14 10:00:00",
+  "time": "2026-05-16 10:00:00",
   "led_on": false,
   "schedule_count": 2,
   "feed_log_count": 5,
@@ -347,21 +349,13 @@ Bu doküman, TolunControl mobil uygulaması ile Tolun platformu cihazları (Aqua
 
 > `schedules` array'i v1.16.0'dan itibaren status payload'undan çıkarıldı. Planlar `get_schedule` komutu ile indeks bazlı çekilir.
 >
+> `fw_version` ve `hw_version` alanları v1.20.0'dan itibaren status payload'undan çıkarıldı. Mobil uygulama bu değerleri DIS karakteristiklerinden okur: FW Revision (`0x2A26`) ve HW Revision (`0x2A27`). MTU bütçesi için ~30 B tasarruf.
+>
 > `first_conn_ts` ve `total_uptime_sec` alanları v1.19.0'da eklendi — cihazın ilk BT pairing zamanı (unix ts, `0` = henüz bağlanmamış) ve tüm güç çevrimleri boyunca biriken toplam çalışma saniyesi.
 
 ---
 
-### 7.5 Feed Log Characteristic
-- UUID: `6E400005-B5A3-F393-E0A9-E50E24DCCA9E`
-- Properties: Read
-- Açıklama: Günlük besleme geçmişinin tamamını tek seferde döner (v1.14.0'da eklendi). v1.17.0'dan itibaren mobil uygulama bu karakteristiği doğrudan okumak yerine per-index `get_feed_log_entry` komutunu kullanır.
-
----
-
-### 7.6 Lighting Log Characteristic
-- UUID: `6E400006-B5A3-F393-E0A9-E50E24DCCA9E`
-- Properties: Read
-- Açıklama: Günlük aydınlatma session geçmişinin tamamını tek seferde döner (v1.14.0'da eklendi). v1.17.0'dan itibaren mobil uygulama bu karakteristiği doğrudan okumak yerine per-index `get_lighting_log_entry` komutunu kullanır.
+> **Tarihsel not — kaldırılan log karakteristikleri:** v1.14.0'da Feeding Service altına `6E400005` (Feed Log) ve `6E400006` (Lighting Log) salt-okunur karakteristikleri eklenmişti — tek ATT Read ile tüm log geçmişini JSON array olarak döndürüyorlardı. v1.17.0'da Android'in 512 B `BluetoothGatt.MAX_ATTR_LEN` sınırı yüzünden 20 entry'lik bir log JSON'unun kesilmesi/parse hatası vermesi üzerine mobil per-index komut akışına geçti. v1.20.0'da karakteristikler firmware'den tamamen kaldırıldı; log transferi yalnızca `get_feed_log_entry` / `get_lighting_log_entry` komutları üzerinden yapılır (her response ~150–250 B, MTU bütçesinin altında).
 
 ---
 
@@ -385,8 +379,6 @@ Bu doküman, TolunControl mobil uygulaması ile Tolun platformu cihazları (Aqua
 | Feeding Resp             | `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`| Notify         |
 | Feeding Event            | `6E400003-B5A3-F393-E0A9-E50E24DCCA9E`| Notify         |
 | Feeding Status           | `6E400004-B5A3-F393-E0A9-E50E24DCCA9E`| Read + Notify  |
-| Feed Log                 | `6E400005-B5A3-F393-E0A9-E50E24DCCA9E`| Read           |
-| Lighting Log             | `6E400006-B5A3-F393-E0A9-E50E24DCCA9E`| Read           |
 
 ---
 
