@@ -391,9 +391,7 @@ Cihaz, komut olmadan da veri gönderebilir.
 {
   "type": "state",
   "state": "IDLE",
-  "fw_version": "1.19.2",
-  "hw_version": "1.0",
-  "time": "2026-05-14 10:00:00",
+  "time": "2026-05-16 10:00:00",
   "led_on": false,
   "schedule_count": 2,
   "feed_log_count": 5,
@@ -405,8 +403,6 @@ Cihaz, komut olmadan da veri gönderebilir.
 
 ### Alan Açıklamaları:
 - `state`: Cihaz durumu — `"IDLE"`, `"RUNNING"`, `"ERROR"`
-- `fw_version`: `system_config.h` → `FIRMWARE_VERSION`
-- `hw_version`: `system_config.h` → `HARDWARE_VERSION`
 - `time`: Cihazın yerel saati (`YYYY-MM-DD HH:MM:SS`)
 - `led_on`: Aydınlatma şeridinin açık/kapalı durumu
 - `schedule_count`: NVS'deki kayıtlı plan sayısı (0–5); planlar `get_schedule` ile ayrıca çekilir
@@ -416,6 +412,8 @@ Cihaz, komut olmadan da veri gönderebilir.
 - `total_uptime_sec`: Tüm güç çevrimleri boyunca biriken toplam çalışma süresi (saniye). NVS'te kalıcı, her 5 dakikada bir flush'lanır.
 
 > `schedules` array'i v1.16.0'dan itibaren status payload'undan çıkarıldı.
+>
+> `fw_version` ve `hw_version` v1.20.0'dan itibaren status payload'undan çıkarıldı. Mobil uygulama bu değerleri DIS karakteristiklerinden okur: FW Revision (`0x2A26` = `FIRMWARE_VERSION`) ve HW Revision (`0x2A27` = `HARDWARE_VERSION`). MTU bütçesi için ~30 B tasarruf.
 >
 > `first_conn_ts` ve `total_uptime_sec` v1.19.0'da eklendi — cihazın yaşam istatistikleri (servis/satış sonrası takibi için).
 
