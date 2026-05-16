@@ -222,14 +222,14 @@ feat: yeni özellik
 fix: hata düzeltme
 feat: vX.Y.Z — açıklama   (release commit'i)
 ```
-Format Conventional Commits. Mesajda `vX.Y.Z` varsa `prepare-commit-msg` hook'u ilgili dosyadaki versiyonu otomatik bump eder ve commit'e ekler — Firmware: `main/config/system_config.h` → `FIRMWARE_VERSION`; Mobile App: `package.json` → `version`. Versiyon içermeyen commit'lerde (ara çalışma) hook no-op kalır. Hook'lar `scripts/git-hooks/prepare-commit-msg`'de tanımlı, `core.hooksPath` ile aktif.
+Format Conventional Commits. Mesajda `vX.Y.Z` varsa `prepare-commit-msg` hook'u ilgili dosyadaki versiyonu otomatik bump'lar ve stage'ler — Firmware: `main/config/system_config.h` → `FIRMWARE_VERSION`; Mobile App: `package.json` → `version`. **Önemli — abort-and-retry:** Bump yapıldığında hook ilk commit çağrısını exit 1 ile abort eder (git tree snapshot'ı hook çalışmadan önce alındığı için bump otomatik dahil EDİLEMEZ); **aynı `git commit` komutunu bir kez daha çalıştır**, ikinci çağrıda dosya zaten doğru sürümde olduğundan hook sessiz geçer ve commit doğru içerikle düşer. Versiyon içermeyen commit'lerde (ara çalışma) hook no-op kalır. Hook'lar `scripts/git-hooks/prepare-commit-msg`'de tanımlı, `core.hooksPath` ile aktif.
 
 > **Yeni clone sonrası bir kez:** `git config core.hooksPath scripts/git-hooks` (her iki repo'da). Yapılmazsa otomatik versiyon bump çalışmaz.
 
 **Release aşaması** (`commit` komutu verildiğinde 1–2, `push` komutu verildiğinde 3–5):
 
 1. `docs/firmware_changelog.md` veya `docs/mobileapp_changelog.md` güncelle
-2. `git commit -m "feat: vX.Y.Z — kısa açıklama"` — hook versiyonu otomatik bump eder
+2. `git commit -m "feat: vX.Y.Z — kısa açıklama"` — hook bump'ı stage'ler ve commit'i abort eder; aynı komutu bir kez daha çalıştır → commit doğru içerikle düşer
 3. `git tag vX.Y.Z`
 4. `git push origin main && git push origin vX.Y.Z`
 5. GitHub Release oluştur (tag üzerinden, changelog bölümünü release notuna ekle)

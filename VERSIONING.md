@@ -56,7 +56,7 @@ ci: CI/CD değişikliği
 
 ## Otomatik Versiyon Bump (`prepare-commit-msg` hook)
 
-Her iki repo'da `scripts/git-hooks/prepare-commit-msg` git hook'u tanımlı. Commit mesajı `vX.Y.Z` içeriyorsa hook ilgili versiyon dosyasını **otomatik günceller ve commit'e ekler**:
+Her iki repo'da `scripts/git-hooks/prepare-commit-msg` git hook'u tanımlı. Commit mesajı subject satırında `vX.Y.Z` içeriyorsa hook ilgili versiyon dosyasını **bump'lar ve stage'ler**:
 
 | Repo | Güncellediği dosya | Alan |
 |---|---|---|
@@ -64,6 +64,23 @@ Her iki repo'da `scripts/git-hooks/prepare-commit-msg` git hook'u tanımlı. Com
 | Firmware | `main/config/system_config.h` | `#define FIRMWARE_VERSION` |
 
 Versiyon içermeyen commit'lerde (ara çalışma, `chore:` vb.) hook **no-op** kalır.
+
+### Abort-and-retry davranışı (önemli)
+
+Hook bump yaptığında ilk commit **exit 1 ile iptal edilir**, terminale şu uyarı basılır:
+
+```
+→ FIRMWARE_VERSION: 1.19.2 → 1.20.0 (auto-bump, stage'lendi)
+
+  ⚠  Bump stage'lendi ama bu commit'in tree snapshot'ı hook çalışmadan önce
+     alındığı için DAHİL EDİLEMEZ — commit abort edildi.
+     Aynı 'git commit ...' komutunu BİR KEZ DAHA çalıştır; bu sefer dosya
+     zaten doğru sürümde, hook sessizce geçer ve commit doğru içerikle düşer.
+```
+
+Aynı `git commit -m "feat: vX.Y.Z — ..."` komutunu bir kez daha çalıştır — ikinci çağrıda dosya zaten doğru sürümde olduğundan hook sessizce geçer ve bump commit'e dahil olur.
+
+**Neden:** `git commit -m` çağrısında git, commit'in tree snapshot'ını `prepare-commit-msg` çalışmadan ÖNCE alıyor. Yani hook içindeki `git add` index'i günceller ama mevcut commit'e dahil olmaz; bump bir sonraki commit'e kayardı (v1.20.0 / v1.35.0 release'lerinde bu bug yaşandı ve `git commit --amend` ile düzeltilmek zorunda kalındı, 17 Mayıs 2026). Abort-and-retry deseni bu kayma sessizce gerçekleşmesin diye eklendi.
 
 ### Aktivasyon (her clone sonrası bir kez)
 
@@ -113,12 +130,14 @@ Release hazır olduğunda şu adımlar sırayla yapılır:
 
 #### 2. Release commit'i at
 
-Versiyon numarasını **manuel güncelleme yok** — `prepare-commit-msg` hook commit mesajındaki `vX.Y.Z`'yi parse edip ilgili dosyayı (`package.json` veya `system_config.h`) günceller ve commit'e ekler.
+Versiyon numarasını **manuel güncelleme yok** — `prepare-commit-msg` hook commit mesajındaki `vX.Y.Z`'yi parse edip ilgili dosyayı (`package.json` veya `system_config.h`) bump'lar ve stage'ler. İlk commit çağrısı abort edilir, aynı komutu **bir kez daha çalıştır**, ikinci çağrıda commit doğru içerikle düşer (detay: yukarıdaki "Abort-and-retry davranışı" bölümü).
 
 ```bash
 git add docs/firmware_changelog.md  # veya mobileapp_changelog.md
 git commit -m "feat: v1.18.0 — kısa açıklama"
-# → hook FIRMWARE_VERSION/version'u 1.18.0 yapar, commit'e dahil eder
+# → hook FIRMWARE_VERSION/version'u 1.18.0'a bump'lar, stage'ler, abort eder
+git commit -m "feat: v1.18.0 — kısa açıklama"
+# → dosya zaten doğru sürümde; hook sessiz geçer, commit düşer
 ```
 
 #### 3. Tag at
